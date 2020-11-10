@@ -2,7 +2,7 @@ from tkinter import *
 import tkinter.messagebox
 from PIL import Image, ImageTk
 import socket, threading, sys, traceback, os
-
+import time
 from RtpPacket import RtpPacket
 
 CACHE_FILE_NAME = "cache-"
@@ -22,6 +22,10 @@ class Client:
 	# For loss rate
 	receivedFrameCount=0
 	currFrameNbr=0 # Moved here from inside the RTP receiver
+
+	# For bitrate
+	startTime=time.time_ns()
+	bitCount=0
 	
 	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
@@ -93,6 +97,8 @@ class Client:
 			self.playEvent = threading.Event()
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
+			self.startTime = time.time_ns()
+			self.bitCount = 0
 	
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
@@ -110,6 +116,7 @@ class Client:
 						if self.frameNbr + 1 != self.currFrameNbr:
 							print("Warning: Lost a packet")
 						else:
+							self.bitCount += rtpPacket.getPayloadSize()
 							self.receivedFrameCount += 1
 							self.frameNbr = self.currFrameNbr
 							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
@@ -274,7 +281,6 @@ class Client:
 
 					elif self.requestSent == self.PLAY:
 						# self.state = ...
-
 						self.state = self.PLAYING
 
 					elif self.requestSent == self.PAUSE:
@@ -287,7 +293,7 @@ class Client:
 
 						# While paused, print out some stats
 						print("Loss rate:", 1 - self.receivedFrameCount/self.currFrameNbr)
-
+						print("Bitrate:", self.bitCount / ((time.time_ns() - self.startTime)/1000000000),"bits/s")
 
 					elif self.requestSent == self.TEARDOWN:
 						# self.state = ...
