@@ -27,7 +27,10 @@ class Client:
 	startTime=time.time_ns()
 	tempFrameCount = 0
 	byteCount = 0
-	
+
+	rtpThread = None
+	rtspThread = None
+
 	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
 		self.master = master
@@ -41,34 +44,29 @@ class Client:
 		self.sessionId = 0
 		self.requestSent = -1
 		self.teardownAcked = 0
-		self.connectToServer()
 		self.frameNbr = 0
+
+		self.setupMovie()
 		
 	def createWidgets(self):
 		"""Build GUI."""
-		# Create Setup button
-		self.setup = Button(self.master, width=20, padx=3, pady=3)
-		self.setup["text"] = "Setup"
-		self.setup["command"] = self.setupMovie
-		self.setup.grid(row=1, column=0, padx=2, pady=2)
-		
 		# Create Play button		
 		self.start = Button(self.master, width=20, padx=3, pady=3)
 		self.start["text"] = "Play"
 		self.start["command"] = self.playMovie
-		self.start.grid(row=1, column=1, padx=2, pady=2)
+		self.start.grid(row=1, column=0, padx=2, pady=2)
 		
 		# Create Pause button			
 		self.pause = Button(self.master, width=20, padx=3, pady=3)
 		self.pause["text"] = "Pause"
 		self.pause["command"] = self.pauseMovie
-		self.pause.grid(row=1, column=2, padx=2, pady=2)
+		self.pause.grid(row=1, column=1, padx=2, pady=2)
 		
 		# Create Teardown button
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
-		self.teardown["text"] = "Teardown"
-		self.teardown["command"] =  self.exitClient
-		self.teardown.grid(row=1, column=3, padx=2, pady=2)
+		self.teardown["text"] = "Stop"
+		self.teardown["command"] =  self.teardownConnection
+		self.teardown.grid(row=1, column=2, padx=2, pady=2)
 		
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
@@ -76,14 +74,13 @@ class Client:
 	
 	def setupMovie(self):
 		"""Setup button handler."""
+		self.connectToServer()
 		if self.state == self.INIT:
 			self.sendRtspRequest(self.SETUP)
-	
-	def exitClient(self):
-		"""Teardown button handler."""
-		self.sendRtspRequest(self.TEARDOWN)		
-		self.master.destroy() # Close the gui window
-		os.remove(CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT) # Delete the cache image from video
+
+	def teardownConnection(self):
+		"""Teardown button handler, now no longer quits the client"""
+		self.sendRtspRequest(self.TEARDOWN)
 
 	def pauseMovie(self):
 		"""Pause button handler."""
@@ -92,9 +89,13 @@ class Client:
 	
 	def playMovie(self):
 		"""Play button handler."""
+		if self.state == self.INIT:
+			self.setupMovie()
+			while (self.state != self.READY): pass # Wait until it is ready
 		if self.state == self.READY:
 			# Create a new thread to listen for RTP packets
-			threading.Thread(target=self.listenRtp).start()
+			self.rtpThread = threading.Thread(target=self.listenRtp)
+			self.rtpThread.start()
 			self.playEvent = threading.Event()
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
@@ -126,14 +127,7 @@ class Client:
 
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
-				if self.playEvent.isSet(): 
-					break
-				
-				# Upon receiving ACK for TEARDOWN request,
-				# close the RTP socket
-				if self.teardownAcked == 1:
-					self.rtpSocket.shutdown(socket.SHUT_RDWR)
-					self.rtpSocket.close()
+				if self.playEvent.isSet():
 					break
 					
 	def writeFrame(self, data):
@@ -154,11 +148,13 @@ class Client:
 	def connectToServer(self):
 		"""Connect to the Server. Start a new RTSP/TCP session."""
 		self.rtspSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		self.rtspSocket.settimeout(0.5)
 		try:
+			
 			self.rtspSocket.connect((self.serverAddr, self.serverPort))
 		except:
 			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
-	
+
 	def sendRtspRequest(self, requestCode):
 		"""Send RTSP request to the server."""	
 		#-------------
@@ -167,7 +163,11 @@ class Client:
 		
 		# Setup request
 		if requestCode == self.SETUP and self.state == self.INIT:
-			threading.Thread(target=self.recvRtspReply).start()
+			print("Starting RTSP listener thread...")
+			self.readyEvent = threading.Event()
+			self.readyEvent.clear()
+			self.rtspThread = threading.Thread(target=self.recvRtspReply)
+			self.rtspThread.start()
 			# Update RTSP sequence number.
 			# ...
 
@@ -246,16 +246,16 @@ class Client:
 	def recvRtspReply(self):
 		"""Receive RTSP reply from the server."""
 		while True:
-			reply = self.rtspSocket.recv(1024)
-			
-			if reply: 
-				self.parseRtspReply(reply.decode("utf-8"))
-			
-			# Close the RTSP socket upon requesting Teardown
-			if self.requestSent == self.TEARDOWN:
-				self.rtspSocket.shutdown(socket.SHUT_RDWR)
-				self.rtspSocket.close()
-				break
+			try:
+				reply = self.rtspSocket.recv(1024)
+				if reply:
+					self.parseRtspReply(reply.decode("utf-8"))
+			except:
+				if self.readyEvent.isSet():
+					print("RTSP listener stopped")
+					self.rtspSocket.shutdown(socket.SHUT_RDWR)
+					self.rtspSocket.close()
+					break
 	
 	def parseRtspReply(self, data):
 		"""Parse the RTSP reply from the server."""
@@ -299,14 +299,21 @@ class Client:
 						print("Loss rate:", 1 - self.receivedFrameCount/self.currFrameNbr)
 						print("Data rate:", self.byteCount / ((currentTime - self.startTime)/1000000000)/1000,"KBps")
 						print("Frame rate:", self.tempFrameCount / ((currentTime - self.startTime)/1000000000), "FPS")
-					elif self.requestSent == self.TEARDOWN:
-						# self.state = ...
 
+					elif self.requestSent == self.TEARDOWN:
 						self.state = self.INIT
-						
-						# Flag the teardownAcked to close the socket.
-						self.teardownAcked = 1 
-	
+						os.remove(CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT)
+						self.sessionId = 0
+						self.requestSent = -1
+						self.frameNbr = 0
+						# Reset connection
+						self.playEvent.set() # Tell RTP thread to end
+						if (self.rtpThread.is_alive()): # If it has not ended by now
+							print("Waiting for RTP thread to stop...")
+							self.rtpThread.join()
+							print("RTP thread stopped")
+						self.rtpSocket.close()
+
 	def openRtpPort(self):
 		"""Open RTP socket binded to a specified port."""
 		#-------------
@@ -332,8 +339,14 @@ class Client:
 
 	def handler(self):
 		"""Handler on explicitly closing the GUI window."""
-		self.pauseMovie()
 		if tkinter.messagebox.askokcancel("Quit?", "Are you sure you want to quit?"):
-			self.exitClient()
+			if self.state != self.INIT:
+				print("Tearing down connection before quitting...")
+				self.teardownConnection() # Teardown is now a separate function
+			self.readyEvent.set() # End RTSP listener
+			if (self.rtspThread.is_alive()):
+				print("Waiting for RTSP listener thread to stop...")
+				self.rtspThread.join()
+			self.master.destroy() # Close the gui window
 		else: # When the user presses cancel, resume playing.
 			self.playMovie()
