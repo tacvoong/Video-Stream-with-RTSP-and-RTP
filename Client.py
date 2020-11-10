@@ -25,7 +25,7 @@ class Client:
 
 	# For bitrate
 	startTime=time.time_ns()
-	bitCount=0
+	byteCount=0
 	
 	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
@@ -98,7 +98,7 @@ class Client:
 			self.playEvent.clear()
 			self.sendRtspRequest(self.PLAY)
 			self.startTime = time.time_ns()
-			self.bitCount = 0
+			self.byteCount = 0
 	
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
@@ -116,7 +116,7 @@ class Client:
 						if self.frameNbr + 1 != self.currFrameNbr:
 							print("Warning: Lost a packet")
 						else:
-							self.bitCount += rtpPacket.getPayloadSize()
+							self.byteCount += rtpPacket.getPayloadSize()
 							self.receivedFrameCount += 1
 							self.frameNbr = self.currFrameNbr
 							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
@@ -293,7 +293,7 @@ class Client:
 
 						# While paused, print out some stats
 						print("Loss rate:", 1 - self.receivedFrameCount/self.currFrameNbr)
-						print("Bitrate:", self.bitCount / ((time.time_ns() - self.startTime)/1000000000),"bits/s")
+						print("Data rate:", self.byteCount / ((time.time_ns() - self.startTime)/1000000000)/1000,"kBps")
 
 					elif self.requestSent == self.TEARDOWN:
 						# self.state = ...
