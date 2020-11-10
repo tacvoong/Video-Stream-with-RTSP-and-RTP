@@ -20,12 +20,13 @@ class Client:
 	TEARDOWN = 3
 
 	# For loss rate
-	receivedFrameCount=0
-	currFrameNbr=0 # Moved here from inside the RTP receiver
+	receivedFrameCount = 0 # Overall, from start to finish
+	currFrameNbr = 0 # Moved here from inside the RTP receiver
 
-	# For bitrate
+	# For bitrate and framerate. Resets every time playback is paused
 	startTime=time.time_ns()
-	byteCount=0
+	tempFrameCount = 0
+	byteCount = 0
 	
 	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
@@ -99,6 +100,7 @@ class Client:
 			self.sendRtspRequest(self.PLAY)
 			self.startTime = time.time_ns()
 			self.byteCount = 0
+			self.tempFrameCount = 0
 	
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
@@ -118,6 +120,7 @@ class Client:
 						else:
 							self.byteCount += rtpPacket.getPayloadSize()
 							self.receivedFrameCount += 1
+							self.tempFrameCount += 1
 							self.frameNbr = self.currFrameNbr
 							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
 
@@ -292,9 +295,10 @@ class Client:
 						self.playEvent.set()
 
 						# While paused, print out some stats
+						currentTime = time.time_ns()
 						print("Loss rate:", 1 - self.receivedFrameCount/self.currFrameNbr)
-						print("Data rate:", self.byteCount / ((time.time_ns() - self.startTime)/1000000000)/1000,"kBps")
-
+						print("Data rate:", self.byteCount / ((currentTime - self.startTime)/1000000000)/1000,"KBps")
+						print("Frame rate:", self.tempFrameCount / ((currentTime - self.startTime)/1000000000), "FPS")
 					elif self.requestSent == self.TEARDOWN:
 						# self.state = ...
 
