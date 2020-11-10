@@ -18,8 +18,12 @@ class Client:
 	PLAY = 1
 	PAUSE = 2
 	TEARDOWN = 3
+
+	# For loss rate
+	receivedFrameCount=0
+	currFrameNbr=0 # Moved here from inside the RTP receiver
 	
-	# Initiation..
+	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
 		self.master = master
 		self.master.protocol("WM_DELETE_WINDOW", self.handler)
@@ -99,12 +103,17 @@ class Client:
 					rtpPacket = RtpPacket()
 					rtpPacket.decode(data)
 					
-					currFrameNbr = rtpPacket.seqNum()
-					print("Current Seq Num: " + str(currFrameNbr))
+					self.currFrameNbr = rtpPacket.seqNum()
+					print("Current Seq Num: " + str(self.currFrameNbr))
 										
-					if currFrameNbr > self.frameNbr: # Discard the late packet
-						self.frameNbr = currFrameNbr
-						self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
+					if self.currFrameNbr > self.frameNbr: # Only receive frames newer than current
+						if self.frameNbr + 1 != self.currFrameNbr:
+							print("Warning: Lost a packet")
+						else:
+							self.receivedFrameCount += 1
+							self.frameNbr = self.currFrameNbr
+							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
+
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
 				if self.playEvent.isSet(): 
@@ -275,6 +284,9 @@ class Client:
 
 						# The play thread exits. A new thread is created on resume.
 						self.playEvent.set()
+
+						# While paused, print out some stats
+						print("Loss rate:", 1 - self.receivedFrameCount/self.currFrameNbr)
 
 
 					elif self.requestSent == self.TEARDOWN:
