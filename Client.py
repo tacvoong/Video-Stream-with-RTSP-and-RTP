@@ -16,8 +16,9 @@ class Client:
 	
 	SETUP = 0
 	PLAY = 1
-	PAUSE = 2
-	TEARDOWN = 3
+	DESCRIBE = 2
+	PAUSE = 3
+	TEARDOWN = 4
 
 	# For loss rate
 	receivedFrameCount = 0 # Overall, from start to finish
@@ -55,18 +56,24 @@ class Client:
 		self.start["text"] = "Play"
 		self.start["command"] = self.playMovie
 		self.start.grid(row=1, column=0, padx=2, pady=2)
-		
+
+		# Create Describe button
+		self.teardown = Button(self.master, width=20, padx=3, pady=3)
+		self.teardown["text"] = "Describe"
+		self.teardown["command"] =  self.describeStream
+		self.teardown.grid(row=1, column=1, padx=2, pady=2)
+
 		# Create Pause button			
 		self.pause = Button(self.master, width=20, padx=3, pady=3)
 		self.pause["text"] = "Pause"
 		self.pause["command"] = self.pauseMovie
-		self.pause.grid(row=1, column=1, padx=2, pady=2)
+		self.pause.grid(row=1, column=2, padx=2, pady=2)
 		
 		# Create Teardown button
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
 		self.teardown["text"] = "Stop"
 		self.teardown["command"] =  self.teardownConnection
-		self.teardown.grid(row=1, column=2, padx=2, pady=2)
+		self.teardown.grid(row=1, column=3, padx=2, pady=2)
 		
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
@@ -102,7 +109,11 @@ class Client:
 			self.startTime = time.time_ns()
 			self.byteCount = 0
 			self.tempFrameCount = 0
-	
+
+	def describeStream(self):
+		"""Sends a DESCRIBE request to get information about the current stream."""
+		if self.state == self.PLAYING:
+			self.sendRtspRequest(self.DESCRIBE)
 	def listenRtp(self):		
 		"""Listen for RTP packets."""
 		while True:
@@ -198,6 +209,12 @@ class Client:
 			# self.requestSent = ...
 
 			self.requestSent = self.PLAY
+
+		elif requestCode == self.DESCRIBE and self.state != self.INIT:
+			self.rtspSeq += 1
+			# We use a reduced SDP protocol here
+			request = ("DESCRIBE " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\nAccept: application/sdp")
+			self.requestSent = self.DESCRIBE
 		
 		# Pause request
 		elif requestCode == self.PAUSE and self.state == self.PLAYING:
@@ -247,7 +264,7 @@ class Client:
 		"""Receive RTSP reply from the server."""
 		while True:
 			try:
-				reply = self.rtspSocket.recv(1024)
+				reply = self.rtspSocket.recv(4096)
 				if reply:
 					self.parseRtspReply(reply.decode("utf-8"))
 				else:
@@ -264,7 +281,6 @@ class Client:
 		"""Parse the RTSP reply from the server."""
 		lines = data.split('\n')
 		seqNum = int(lines[1].split(' ')[1])
-		
 		# Process only if the server reply's sequence number is the same as the request's
 		if seqNum == self.rtspSeq:
 			session = int(lines[2].split(' ')[1])
@@ -288,6 +304,12 @@ class Client:
 					elif self.requestSent == self.PLAY:
 						# self.state = ...
 						self.state = self.PLAYING
+
+					elif self.requestSent == self.DESCRIBE:
+						print("Printing SDP file...")
+						sdpFileStr = "\n".join(lines[7:])
+						print("See message box for stream information")
+						tkinter.messagebox.showinfo(title="Stream information", message=sdpFileStr)
 
 					elif self.requestSent == self.PAUSE:
 						# self.state = ...

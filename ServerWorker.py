@@ -1,5 +1,6 @@
 from random import randint
-import sys, traceback, threading, socket
+import sys, traceback, threading, socket, datetime, time
+import urllib.request
 
 from VideoStream import VideoStream
 from RtpPacket import RtpPacket
@@ -9,6 +10,7 @@ class ServerWorker:
 	PLAY = 'PLAY'
 	PAUSE = 'PAUSE'
 	TEARDOWN = 'TEARDOWN'
+	DESCRIBE = 'DESCRIBE'
 	
 	INIT = 0
 	READY = 1
@@ -60,6 +62,7 @@ class ServerWorker:
 				print("processing SETUP\n")
 				
 				try:
+					self.fileName = filename
 					self.clientInfo['videoStream'] = VideoStream(filename)
 					self.state = self.READY
 				except IOError:
@@ -79,7 +82,7 @@ class ServerWorker:
 			if self.state == self.READY:
 				print("processing PLAY\n")
 				self.state = self.PLAYING
-				
+
 				# Create a new socket for RTP/UDP
 				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 				
@@ -89,6 +92,10 @@ class ServerWorker:
 				self.clientInfo['event'] = threading.Event()
 				self.clientInfo['worker']= threading.Thread(target=self.sendRtp) 
 				self.clientInfo['worker'].start()
+
+		elif requestType == self.DESCRIBE and (self.state == self.PLAYING or self.state == self.READY):
+			print("processing DESCRIBE\n")
+			self.replyRtsp(self.OK_200, seq[1], True)
 		
 		# Process PAUSE request
 		elif requestType == self.PAUSE:
@@ -150,11 +157,14 @@ class ServerWorker:
 		
 		return rtpPacket.getPacket()
 		
-	def replyRtsp(self, code, seq):
+	def replyRtsp(self, code, seq, describe=False):
 		"""Send RTSP reply to the client."""
 		if code == self.OK_200:
 			#print("200 OK")
 			reply = 'RTSP/1.0 200 OK\nCSeq: ' + seq + '\nSession: ' + str(self.clientInfo['session'])
+			if describe:
+				sdpFile = "v=0\no=" + socket.gethostname() + " 1234 1.0 IN IP4 " + urllib.request.urlopen('https://ident.me').read().decode('utf8') + "\ns=" + "RTSPAssignmentServer\nm=video " + self.clientInfo["rtpPort"] + " RTP/UDP 1.0"
+				reply += '\nDate: ' + datetime.datetime.now().strftime('%d %b %Y %H:%M:%S GMT') + "\nContent-Type: application/sdp\nContent-Length: " + str(len(sdpFile)) + "\n\n" + sdpFile
 			connSocket = self.clientInfo['rtspSocket'][0]
 			connSocket.send(reply.encode())
 		
