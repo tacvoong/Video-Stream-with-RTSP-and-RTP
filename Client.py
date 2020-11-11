@@ -250,6 +250,9 @@ class Client:
 				reply = self.rtspSocket.recv(1024)
 				if reply:
 					self.parseRtspReply(reply.decode("utf-8"))
+				else:
+					print("No connection to server. RTSP listener thread is stopping...")
+					break
 			except:
 				if self.readyEvent.isSet():
 					print("RTSP listener stopped")
@@ -280,7 +283,7 @@ class Client:
 						# self.state = ...
 						self.state = self.READY
 						# Open RTP port.
-						self.openRtpPort() 
+						self.openRtpPort()
 
 					elif self.requestSent == self.PLAY:
 						# self.state = ...

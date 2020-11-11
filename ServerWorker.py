@@ -30,11 +30,15 @@ class ServerWorker:
 	def recvRtspRequest(self):
 		"""Receive RTSP request from the client."""
 		connSocket = self.clientInfo['rtspSocket'][0]
-		while True:            
+		while True:
 			data = connSocket.recv(256)
 			if data:
-				print("Data received:\n" + data.decode("utf-8"))
-				self.processRtspRequest(data.decode("utf-8"))
+				dataStr = data.decode("utf-8")
+				print("Data received:\n" + dataStr)
+				self.processRtspRequest(dataStr)
+				if dataStr.split('\n')[0].split(' ')[0] == self.TEARDOWN:
+					print("Client sent TEARDOWN. Terminating corresponding RTSP receiver...")
+					break
 	
 	def processRtspRequest(self, data):
 		"""Process RTSP request sent from the client."""
