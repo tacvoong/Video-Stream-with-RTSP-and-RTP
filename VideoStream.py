@@ -1,25 +1,30 @@
+import io
+import imageio
+from PIL import Image
 class VideoStream:
-	def __init__(self, filename):
-		self.filename = filename
-		try:
-			self.file = open(filename, 'rb')
-		except:
-			raise IOError
-		self.frameNum = 0
-		
-	def nextFrame(self):
-		"""Get next frame."""
-		data = self.file.read(5) # Get the framelength from the first 5 bits
-		if data: 
-			framelength = int(data)
-							
-			# Read the current frame
-			data = self.file.read(framelength)
-			self.frameNum += 1
-		return data
-		
-	def frameNbr(self):
-		"""Get frame number."""
-		return self.frameNum
-	
-	
+        def __init__(self, filename):
+                self.filename = filename
+                self.file = imageio.get_reader(filename)
+                self.frameNum = 0
+                
+        def nextFrame(self):
+                """Get next frame."""
+                self.frameNum += 1
+                data = self.file.get_next_data()
+                frame_image = Image.fromarray(data)
+                
+                buf = io.BytesIO()
+                frame_image.save(buf, format='JPEG')
+                return buf.getvalue()
+                
+        def frameNbr(self):
+                """Get frame number."""
+                return self.frameNum
+
+        def frameCount(self):
+                """Get frame count. Imageio's get_length doesn't work on ffmpeg formats by default"""
+                return self.file.count_frames()
+
+        def seek(self, idx):
+                """Seek to this frame"""
+                self.file.set_image_index(idx)

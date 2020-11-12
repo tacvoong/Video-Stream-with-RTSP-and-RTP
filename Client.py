@@ -24,6 +24,9 @@ class Client:
 	receivedFrameCount = 0 # Overall, from start to finish
 	currFrameNbr = 0 # Moved here from inside the RTP receiver
 
+	# For seekable playback
+	length = 1 # in frames
+
 	# For bitrate and framerate. Resets every time playback is paused
 	startTime=time.time_ns()
 	tempFrameCount = 0
@@ -55,26 +58,30 @@ class Client:
 		self.start = Button(self.master, width=20, padx=3, pady=3)
 		self.start["text"] = "Play"
 		self.start["command"] = self.playMovie
-		self.start.grid(row=1, column=0, padx=2, pady=2)
+		self.start.grid(row=2, column=0, padx=2, pady=2)
 
 		# Create Describe button
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
 		self.teardown["text"] = "Describe"
 		self.teardown["command"] =  self.describeStream
-		self.teardown.grid(row=1, column=1, padx=2, pady=2)
+		self.teardown.grid(row=2, column=1, padx=2, pady=2)
 
 		# Create Pause button			
 		self.pause = Button(self.master, width=20, padx=3, pady=3)
 		self.pause["text"] = "Pause"
 		self.pause["command"] = self.pauseMovie
-		self.pause.grid(row=1, column=2, padx=2, pady=2)
+		self.pause.grid(row=2, column=2, padx=2, pady=2)
 		
 		# Create Teardown button
 		self.teardown = Button(self.master, width=20, padx=3, pady=3)
 		self.teardown["text"] = "Stop"
 		self.teardown["command"] =  self.teardownConnection
-		self.teardown.grid(row=1, column=3, padx=2, pady=2)
-		
+		self.teardown.grid(row=2, column=3, padx=2, pady=2)
+
+		# Create a seekbar that has 255 fixed steps
+		self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False)
+		self.seekbar.grid(row=1,column=0, columnspan=4, padx=2, pady=2, sticky=EW)
+
 		# Create a label to display the movie
 		self.label = Label(self.master, height=19)
 		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
@@ -134,6 +141,7 @@ class Client:
 							self.receivedFrameCount += 1
 							self.tempFrameCount += 1
 							self.frameNbr = self.currFrameNbr
+							self.seekbar.set(255*self.frameNbr/self.length)
 							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
 
 			except:
@@ -196,7 +204,7 @@ class Client:
 		
 		# Play request
 		elif requestCode == self.PLAY and self.state == self.READY:
-			# Update RTSP sequence number.
+			# Update RTSP sequence number
 			# ...
 			
 			self.rtspSeq += 1
@@ -204,7 +212,7 @@ class Client:
 			# Write the RTSP request to be sent.
 			# request = ...
 			
-			request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId))
+			request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(self.currFrameNbr))
 			# Keep track of the sent request.
 			# self.requestSent = ...
 
@@ -290,16 +298,14 @@ class Client:
 			
 			# Process only if the session ID is the same
 			if self.sessionId == session:
-				if int(lines[0].split(' ')[1]) == 200: 
+				if int(lines[0].split(' ')[1]) == 200:
 					if self.requestSent == self.SETUP:
-						#-------------
-						# TO COMPLETE
-						#-------------
-						# Update RTSP state.
-						# self.state = ...
 						self.state = self.READY
-						# Open RTP port.
+						# Open RTP port
 						self.openRtpPort()
+						# Update seekbar
+						self.length = int(lines[3].split(' ')[1])
+						print("--- Total frames to be played:", self.length)
 
 					elif self.requestSent == self.PLAY:
 						# self.state = ...
@@ -346,7 +352,6 @@ class Client:
 		#-------------
 		# Create a new datagram socket to receive RTP packets from the server
 		# self.rtpSocket = ...
-
 		self.rtpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 		# Set the timeout value of the socket to 0.5sec

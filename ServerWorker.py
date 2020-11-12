@@ -72,7 +72,7 @@ class ServerWorker:
 				self.clientInfo['session'] = randint(100000, 999999)
 				
 				# Send RTSP reply
-				self.replyRtsp(self.OK_200, seq[1])
+				self.replyRtsp(self.OK_200, seq[1], setup=True)
 				
 				# Get the RTP/UDP port from the last line
 				self.clientInfo['rtpPort'] = request[2].split(' ')[3]
@@ -85,6 +85,9 @@ class ServerWorker:
 
 				# Create a new socket for RTP/UDP
 				self.clientInfo["rtpSocket"] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+				# Set requested frame as the first to be played
+				self.clientInfo["videoStream"].seek(int(request[3].split(' ')[1]))
 				
 				self.replyRtsp(self.OK_200, seq[1])
 				
@@ -135,7 +138,7 @@ class ServerWorker:
 					port = int(self.clientInfo['rtpPort'])
 					self.clientInfo['rtpSocket'].sendto(self.makeRtp(data, frameNumber),(address,port))
 				except:
-					print("Connection Error")
+					print("sendRtp error")
 					#print('-'*60)
 					#traceback.print_exc(file=sys.stdout)
 					#print('-'*60)
@@ -152,12 +155,13 @@ class ServerWorker:
 		ssrc = 0 
 		
 		rtpPacket = RtpPacket()
-		
-		rtpPacket.encode(version, padding, extension, cc, seqnum, marker, pt, ssrc, payload)
-		
+		try:
+			rtpPacket.encode(version, padding, extension, cc, seqnum, marker, pt, ssrc, payload)
+		except:
+			print("Encode error")
 		return rtpPacket.getPacket()
 		
-	def replyRtsp(self, code, seq, describe=False):
+	def replyRtsp(self, code, seq, describe=False, setup=False):
 		"""Send RTSP reply to the client."""
 		if code == self.OK_200:
 			#print("200 OK")
@@ -165,6 +169,9 @@ class ServerWorker:
 			if describe:
 				sdpFile = "v=0\no=" + socket.gethostname() + " 1234 1.0 IN IP4 " + urllib.request.urlopen('https://ident.me').read().decode('utf8') + "\ns=" + "RTSPAssignmentServer\nm=video " + self.clientInfo["rtpPort"] + " RTP/UDP 1.0"
 				reply += '\nDate: ' + datetime.datetime.now().strftime('%d %b %Y %H:%M:%S GMT') + "\nContent-Type: application/sdp\nContent-Length: " + str(len(sdpFile)) + "\n\n" + sdpFile
+			if setup:
+				reply += '\nFrameCount: ' + str(self.clientInfo['videoStream'].frameCount())
+
 			connSocket = self.clientInfo['rtspSocket'][0]
 			connSocket.send(reply.encode())
 		
