@@ -79,7 +79,7 @@ class Client:
 		self.teardown.grid(row=2, column=3, padx=2, pady=2)
 
 		# Create a seekbar that has 255 fixed steps
-		self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False)
+		self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False, command=self.seek)
 		self.seekbar.grid(row=1,column=0, columnspan=4, padx=2, pady=2, sticky=EW)
 
 		# Create a label to display the movie
@@ -174,6 +174,11 @@ class Client:
 		except:
 			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
 
+	def seek(self, frame):
+		if self.state == self.READY:
+			self.frameNbr = int(round(self.length*int(frame)/255))
+
+		request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(frame))
 	def sendRtspRequest(self, requestCode):
 		"""Send RTSP request to the server."""	
 		#-------------
@@ -212,7 +217,7 @@ class Client:
 			# Write the RTSP request to be sent.
 			# request = ...
 			
-			request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(self.currFrameNbr))
+			request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(self.frameNbr + 1))
 			# Keep track of the sent request.
 			# self.requestSent = ...
 

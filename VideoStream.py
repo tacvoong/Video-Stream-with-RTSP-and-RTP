@@ -28,3 +28,5 @@ class VideoStream:
         def seek(self, idx):
                 """Seek to this frame"""
                 self.file.set_image_index(idx)
+                self.frameNum = idx-1
+                print("VideoStream index set to",idx)
