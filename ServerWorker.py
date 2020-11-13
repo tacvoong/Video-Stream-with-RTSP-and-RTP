@@ -155,10 +155,7 @@ class ServerWorker:
 		ssrc = 0 
 		
 		rtpPacket = RtpPacket()
-		try:
-			rtpPacket.encode(version, padding, extension, cc, seqnum, marker, pt, ssrc, payload)
-		except:
-			print("Encode error")
+		rtpPacket.encode(version, padding, extension, cc, seqnum, marker, pt, ssrc, payload)
 		return rtpPacket.getPacket()
 		
 	def replyRtsp(self, code, seq, describe=False, setup=False):

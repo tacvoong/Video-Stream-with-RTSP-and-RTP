@@ -1,6 +1,7 @@
-from tkinter import *
-import tkinter.messagebox
-from PIL import Image, ImageTk
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk3
+
 import socket, threading, sys, traceback, os
 import time
 from RtpPacket import RtpPacket
@@ -8,7 +9,7 @@ from RtpPacket import RtpPacket
 CACHE_FILE_NAME = "cache-"
 CACHE_FILE_EXT = ".jpg"
 
-class Client:
+class Client(Gtk.Window):
 	INIT = 0
 	READY = 1
 	PLAYING = 2
@@ -37,8 +38,7 @@ class Client:
 
 	# Initialisation
 	def __init__(self, master, serveraddr, serverport, rtpport, filename):
-		self.master = master
-		self.master.protocol("WM_DELETE_WINDOW", self.handler)
+		Gtk.Window.__init__(self, title="RTSP/RTP Client")
 		self.createWidgets()
 		self.serverAddr = serveraddr
 		self.serverPort = int(serverport)
@@ -54,38 +54,44 @@ class Client:
 		
 	def createWidgets(self):
 		"""Build GUI."""
-		# Create Play button		
-		self.start = Button(self.master, width=20, padx=3, pady=3)
-		self.start["text"] = "Play"
-		self.start["command"] = self.playMovie
-		self.start.grid(row=2, column=0, padx=2, pady=2)
+
+		# Create grid layout
+		self.grid = Gtk.Grid()
+		self.add(self.grid)
+
+		# Create an image to display the movie
+		self.image = Gtk.Image() # use set_from_file
+		self.grid.attach(self.image, 0,0,4,1)
+
+		# Create Play button
+		self.start = Gtk.Button(label="Play")
+		self.start.connect("clicked", self.playMovie)
+		self.grid.attach(self.start, 0, 1, 1, 1)
 
 		# Create Describe button
-		self.teardown = Button(self.master, width=20, padx=3, pady=3)
-		self.teardown["text"] = "Describe"
-		self.teardown["command"] =  self.describeStream
-		self.teardown.grid(row=2, column=1, padx=2, pady=2)
+		self.describeButton = Gtk.Button(label="Describe")
+		self.describeButton.connect("clicked", self.describe)
+		self.grid.attach(self.describeButton, 1, 1, 1, 1)
 
-		# Create Pause button			
-		self.pause = Button(self.master, width=20, padx=3, pady=3)
-		self.pause["text"] = "Pause"
-		self.pause["command"] = self.pauseMovie
-		self.pause.grid(row=2, column=2, padx=2, pady=2)
+		# Create Pause button
+		self.pause = Gtk.Button(label="Pause")
+		self.pause.connect("clicked", self.pauseMovie)
+		self.grid.attach(self.pause, 2, 1, 1, 1)
 		
 		# Create Teardown button
-		self.teardown = Button(self.master, width=20, padx=3, pady=3)
-		self.teardown["text"] = "Stop"
-		self.teardown["command"] =  self.teardownConnection
-		self.teardown.grid(row=2, column=3, padx=2, pady=2)
+		self.teardownButton = Gtk.Button(label="Stop")
+		self.teardownButton.connect("clicked", self.pauseMovie)
+		self.grid.attach(self.teardownButton, 3, 1, 1, 1)
 
 		# Create a seekbar that has 255 fixed steps
-		self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False, command=self.seek)
-		self.seekbar.grid(row=1,column=0, columnspan=4, padx=2, pady=2, sticky=EW)
+		#self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False, command=self.seek)
+		#self.seekbar.grid(row=1,column=0, columnspan=4, padx=2, pady=2, sticky=EW)
 
 		# Create a label to display the movie
-		self.label = Label(self.master, height=19)
-		self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5) 
-	
+		#self.label = Label(self.master, height=19)
+		#self.label.grid(row=0, column=0, columnspan=4, sticky=W+E+N+S, padx=5, pady=5)
+
+
 	def setupMovie(self):
 		"""Setup button handler."""
 		self.connectToServer()
@@ -169,14 +175,16 @@ class Client:
 		self.rtspSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.rtspSocket.settimeout(0.5)
 		try:
-			
 			self.rtspSocket.connect((self.serverAddr, self.serverPort))
 		except:
 			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
 
 	def seek(self, frame):
-		if self.state == self.READY:
-			self.frameNbr = int(round(self.length*int(frame)/255))
+		prevFrame = self.frameNbr
+		self.frameNbr = int(round(self.length*int(frame)/255))
+		if self.state == self.PLAYING and abs(self.frameNbr - prevFrame) > 20:
+			self.state == self.READY
+			self.sendRtspRequest(self.PLAY)
 
 		request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(frame))
 	def sendRtspRequest(self, requestCode):
