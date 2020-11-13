@@ -53,6 +53,20 @@ class Client(Gtk.Window):
     def createWidgets(self):
         """Build GUI."""
 
+	# Create glyphs
+	self.play_image = Gtk.Image.new_from_icon_name(
+                "gtk-media-play",
+                Gtk.IconSize.MENU
+            )
+        self.pause_image = Gtk.Image.new_from_icon_name(
+                "gtk-media-pause",
+                Gtk.IconSize.MENU
+            )
+        self.stop_image = Gtk.Image.new_from_icon_name(
+                "gtk-media-stop",
+                Gtk.IconSize.MENU
+            )
+
         # Create grid layout
         self.grid = Gtk.Grid()
         self.add(self.grid)
@@ -62,7 +76,8 @@ class Client(Gtk.Window):
         self.grid.attach(self.image, 0, 0, 4, 1)
 
         # Create Play button
-        self.start = Gtk.Button(label="Play")
+        self.start = Gtk.Button()
+	self.start.set_image = self.play_image
         self.start.connect("clicked", self.playMovie)
         self.grid.attach(self.start, 0, 2, 1, 1)
 
@@ -72,12 +87,14 @@ class Client(Gtk.Window):
         self.grid.attach(self.describe, 1, 2, 1, 1)
 
         # Create Pause button
-        self.pause = Gtk.Button(label="Pause")
+        self.pause = Gtk.Button()
+	self.pause.set_image = self.pause_image
         self.pause.connect("clicked", self.pauseMovie)
         self.grid.attach(self.pause, 2, 2, 1, 1)
 
         # Create Teardown button
-        self.stop = Gtk.Button(label="Stop")
+        self.stop = Gtk.Button()
+	self.stop.set_image(self.stop_image)
         self.stop.connect("clicked", self.teardownConnection)
         self.grid.attach(self.stop, 3, 2, 1, 1)
 
