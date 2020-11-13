@@ -1,11 +1,10 @@
-import gi, cairo
-
+import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, GObject, GdkPixbuf
+from gi.repository import Gtk, GdkPixbuf
+from RtpPacket import RtpPacket
 
 import socket, threading, sys, traceback, os
 import time
-from RtpPacket import RtpPacket
 
 class Client(Gtk.Window):
     INIT = 0
@@ -122,6 +121,7 @@ class Client(Gtk.Window):
             self.startTime = time.time_ns()
             self.byteCount = 0
             self.tempFrameCount = 0
+            self.receivedFrameCount = 0
 
     def describeStream(self, button=None):
         """Sends a DESCRIBE request to get information about the current stream."""
@@ -158,20 +158,10 @@ class Client(Gtk.Window):
                 if self.playEvent.isSet():
                     break
 
-    def writeFrame(self, data):
-        """Write the received frame to a temp image file. Return the image file."""
-        cachename = CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT
-        file = open(cachename, "wb")
-        file.write(data)
-        file.close()
-
-        return cachename
-
     def updateMovie(self, data):
         """Update the image file as video frame in the GUI."""
         l = GdkPixbuf.PixbufLoader.new_with_type("jpeg")
         l.write(data)
-        # Gtk.idle_add(self.image.set_from_file,CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT)
         self.image.set_from_pixbuf(l.get_pixbuf())
         l.close()
 
@@ -240,6 +230,7 @@ class Client(Gtk.Window):
                 + str(self.frameNbr + 1)
             )
             self.requestSent = self.PLAY
+            self.startFrame = self.frameNbr + 1
 
         elif requestCode == self.DESCRIBE and self.state != self.INIT:
             self.rtspSeq += 1
@@ -333,7 +324,6 @@ class Client(Gtk.Window):
                         self.openRtpPort()
                         # Update seekbar
                         self.length = int(lines[3].split(" ")[1])
-                        print("--- Total frames to be played:", self.length)
 
                     elif self.requestSent == self.PLAY:
                         self.state = self.PLAYING
@@ -358,7 +348,7 @@ class Client(Gtk.Window):
                         currentTime = time.time_ns()
                         print(
                             "Loss rate:",
-                            1 - self.receivedFrameCount / self.currFrameNbr,
+                            1 - self.receivedFrameCount/(self.frameNbr - self.startFrame + 1),
                         )
                         print(
                             "Data rate:",
