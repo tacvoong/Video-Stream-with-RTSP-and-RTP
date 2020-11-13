@@ -1,6 +1,6 @@
-import gi
+import gi, cairo
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk3
+from gi.repository import Gtk , GLib , GObject , GdkPixbuf
 
 import socket, threading, sys, traceback, os
 import time
@@ -37,7 +37,7 @@ class Client(Gtk.Window):
 	rtspThread = None
 
 	# Initialisation
-	def __init__(self, master, serveraddr, serverport, rtpport, filename):
+	def __init__(self, serveraddr, serverport, rtpport, filename):
 		Gtk.Window.__init__(self, title="RTSP/RTP Client")
 		self.createWidgets()
 		self.serverAddr = serveraddr
@@ -60,32 +60,33 @@ class Client(Gtk.Window):
 		self.add(self.grid)
 
 		# Create an image to display the movie
-		self.image = Gtk.Image() # use set_from_file
+		self.image = Gtk.Image()
 		self.grid.attach(self.image, 0,0,4,1)
 
 		# Create Play button
 		self.start = Gtk.Button(label="Play")
 		self.start.connect("clicked", self.playMovie)
-		self.grid.attach(self.start, 0, 1, 1, 1)
+		self.grid.attach(self.start, 0, 2, 1, 1)
 
 		# Create Describe button
-		self.describeButton = Gtk.Button(label="Describe")
-		self.describeButton.connect("clicked", self.describe)
-		self.grid.attach(self.describeButton, 1, 1, 1, 1)
+		self.describe = Gtk.Button(label="Describe")
+		self.describe.connect("clicked", self.describeStream)
+		self.grid.attach(self.describe, 1, 2, 1, 1)
 
 		# Create Pause button
 		self.pause = Gtk.Button(label="Pause")
 		self.pause.connect("clicked", self.pauseMovie)
-		self.grid.attach(self.pause, 2, 1, 1, 1)
+		self.grid.attach(self.pause, 2, 2, 1, 1)
 		
 		# Create Teardown button
-		self.teardownButton = Gtk.Button(label="Stop")
-		self.teardownButton.connect("clicked", self.pauseMovie)
-		self.grid.attach(self.teardownButton, 3, 1, 1, 1)
+		self.stop = Gtk.Button(label="Stop")
+		self.stop.connect("clicked", self.teardownConnection)
+		self.grid.attach(self.stop, 3, 2, 1, 1)
 
 		# Create a seekbar that has 255 fixed steps
-		#self.seekbar = Scale(self.master, orient=HORIZONTAL, from_=0, to=255, showvalue=False, command=self.seek)
-		#self.seekbar.grid(row=1,column=0, columnspan=4, padx=2, pady=2, sticky=EW)
+		self.seekbar = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL,0,255,1)
+		self.seekbar.connect("change_value", self.seek)
+		self.grid.attach(self.seekbar, 0,1,4,1)
 
 		# Create a label to display the movie
 		#self.label = Label(self.master, height=19)
@@ -98,16 +99,16 @@ class Client(Gtk.Window):
 		if self.state == self.INIT:
 			self.sendRtspRequest(self.SETUP)
 
-	def teardownConnection(self):
+	def teardownConnection(self, button=None):
 		"""Teardown button handler, now no longer quits the client"""
 		self.sendRtspRequest(self.TEARDOWN)
 
-	def pauseMovie(self):
+	def pauseMovie(self, button=None):
 		"""Pause button handler."""
 		if self.state == self.PLAYING:
 			self.sendRtspRequest(self.PAUSE)
 	
-	def playMovie(self):
+	def playMovie(self, button=None):
 		"""Play button handler."""
 		if self.state == self.INIT:
 			self.setupMovie()
@@ -123,7 +124,7 @@ class Client(Gtk.Window):
 			self.byteCount = 0
 			self.tempFrameCount = 0
 
-	def describeStream(self):
+	def describeStream(self, button=None):
 		"""Sends a DESCRIBE request to get information about the current stream."""
 		if self.state == self.PLAYING:
 			self.sendRtspRequest(self.DESCRIBE)
@@ -147,8 +148,8 @@ class Client(Gtk.Window):
 							self.receivedFrameCount += 1
 							self.tempFrameCount += 1
 							self.frameNbr = self.currFrameNbr
-							self.seekbar.set(255*self.frameNbr/self.length)
-							self.updateMovie(self.writeFrame(rtpPacket.getPayload()))
+							self.seekbar.set_value(255*self.frameNbr/self.length)
+							self.updateMovie(rtpPacket.getPayload())
 
 			except:
 				# Stop listening upon requesting PAUSE or TEARDOWN
@@ -164,11 +165,15 @@ class Client(Gtk.Window):
 		
 		return cachename
 	
-	def updateMovie(self, imageFile):
+	def updateMovie(self, data):
 		"""Update the image file as video frame in the GUI."""
-		photo = ImageTk.PhotoImage(Image.open(imageFile))
-		self.label.configure(image = photo, height=288) 
-		self.label.image = photo
+		l = GdkPixbuf.PixbufLoader.new_with_type('jpeg')
+		l.write(data)
+		#Gtk.idle_add(self.image.set_from_file,CACHE_FILE_NAME + str(self.sessionId) + CACHE_FILE_EXT)
+		self.image.set_from_pixbuf(l.get_pixbuf())
+		l.close()
+
+		#print("Image: ", self.image.get_storage_type())
 		
 	def connectToServer(self):
 		"""Connect to the Server. Start a new RTSP/TCP session."""
@@ -177,16 +182,22 @@ class Client(Gtk.Window):
 		try:
 			self.rtspSocket.connect((self.serverAddr, self.serverPort))
 		except:
-			tkinter.messagebox.showwarning('Connection Failed', 'Connection to \'%s\' failed.' %self.serverAddr)
+			errorDialog = Gtk.MessageDialog(
+				transient_for=self,
+				flags=0,
+				message_type=Gtk.MessageType.ERROR,
+				buttons=Gtk.ButtonsType.CANCEL,
+				text = "Failed to connect to the server."
+			)
+			errorDialog.run()
+			errorDialog.destroy()
 
-	def seek(self, frame):
-		prevFrame = self.frameNbr
-		self.frameNbr = int(round(self.length*int(frame)/255))
-		if self.state == self.PLAYING and abs(self.frameNbr - prevFrame) > 20:
-			self.state == self.READY
-			self.sendRtspRequest(self.PLAY)
+	def seek(self, context, scroll, value):
+		self.pauseMovie()
+		while self.state != self.READY: pass
+		self.frameNbr = int(round(self.length*int(value)/255))
+		self.sendRtspRequest(self.PLAY)
 
-		request = ("PLAY " + str(self.fileName) + " RTSP/1.0 " + "\n" + "CSeq: " + str(self.rtspSeq) + "\n" + "Session: " + str(self.sessionId) + "\nFrame: " + str(frame))
 	def sendRtspRequest(self, requestCode):
 		"""Send RTSP request to the server."""	
 		#-------------
@@ -216,7 +227,7 @@ class Client(Gtk.Window):
 			self.requestSent = self.SETUP
 		
 		# Play request
-		elif requestCode == self.PLAY and self.state == self.READY:
+		elif requestCode == self.PLAY and self.state != self.INIT:
 			# Update RTSP sequence number
 			# ...
 			
@@ -325,10 +336,18 @@ class Client(Gtk.Window):
 						self.state = self.PLAYING
 
 					elif self.requestSent == self.DESCRIBE:
-						print("Printing SDP file...")
 						sdpFileStr = "\n".join(lines[7:])
-						print("See message box for stream information")
-						tkinter.messagebox.showinfo(title="Stream information", message=sdpFileStr)
+						#tkinter.messagebox.showinfo(title="Stream information", message=sdpFileStr)
+						infoDialog = Gtk.MessageDialog(
+							transient_for=self,
+							flags=0,
+							message_type=Gtk.MessageType.INFO,
+							buttons=Gtk.ButtonsType.OK,
+							text = sdpFileStr
+						)
+						infoDialog.run()
+						infoDialog.destroy()
+
 
 					elif self.requestSent == self.PAUSE:
 						# self.state = ...
@@ -378,11 +397,30 @@ class Client(Gtk.Window):
 			self.rtpSocket.bind(('',self.rtpPort))
 
 		except:
-			tkinter.messagebox.showwarning('Unable to Bind', 'Unable to bind PORT=%d' %self.rtpPort)
+			#tkinter.messagebox.showwarning('Unable to Bind', 'Unable to bind PORT=%d' %self.rtpPort)
+			errorDialog = Gtk.MessageDialog(
+				transient_for=self,
+				flags=0,
+				message_type=Gtk.MessageType.ERROR,
+				buttons=Gtk.ButtonsType.CANCEL,
+				text = "Unable to bind to port " + str(self.rtpPort)
+			)
+			errorDialog.run()
+			errorDialog.destroy()
 
-	def handler(self):
+	# the old handler method is now an overriden version of the delete_event handler
+	def do_delete_event(self, event):
 		"""Handler on explicitly closing the GUI window."""
-		if tkinter.messagebox.askokcancel("Quit?", "Are you sure you want to quit?"):
+		dialog = Gtk.MessageDialog(
+			transient_for=self,
+			flags=0,
+			message_type=Gtk.MessageType.QUESTION,
+			buttons=Gtk.ButtonsType.YES_NO,
+			text="Are you sure you want to exit?",
+		)
+		response = dialog.run()
+		dialog.destroy()
+		if response == Gtk.ResponseType.YES:
 			if self.state != self.INIT:
 				print("Tearing down connection before quitting...")
 				self.teardownConnection() # Teardown is now a separate function
@@ -390,6 +428,6 @@ class Client(Gtk.Window):
 			if (self.rtspThread.is_alive()):
 				print("Waiting for RTSP listener thread to stop...")
 				self.rtspThread.join()
-			self.master.destroy() # Close the gui window
-		else: # When the user presses cancel, resume playing.
-			self.playMovie()
+			return False
+		else:
+			return True
