@@ -44,6 +44,11 @@ class ServerWorker:
                         "Client sent TEARDOWN. Terminating corresponding RTSP receiver..."
                     )
                     break
+            else:
+                print("Connection forcibly closed by client.")
+                self.clientInfo["event"].set() # terminate RTP thread
+                break
+
 
     def processRtspRequest(self, data):
         """Process RTSP request sent from the client."""

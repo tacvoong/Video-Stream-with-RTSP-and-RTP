@@ -132,7 +132,7 @@ class Client(Gtk.Window):
         """Listen for RTP packets."""
         while True:
             try:
-                data = self.rtpSocket.recv(20480)
+                data = self.rtpSocket.recv(65536)
                 if data:
                     rtpPacket = RtpPacket()
                     rtpPacket.decode(data)
@@ -185,11 +185,15 @@ class Client(Gtk.Window):
             errorDialog.destroy()
 
     def seek(self, context, scroll, value):
-        self.pauseMovie()
-        while self.state != self.READY:
-            pass
+        was_playing = False
+        if self.state == self.PLAYING:
+            was_playing = True
+            self.pauseMovie()
+            while self.state != self.READY:
+                pass
         self.frameNbr = int(round(self.length * int(value) / 255))
-        self.sendRtspRequest(self.PLAY)
+        if was_playing:
+            self.sendRtspRequest(self.PLAY)
 
     def sendRtspRequest(self, requestCode):
         """Send RTSP request to the server."""
@@ -292,6 +296,8 @@ class Client(Gtk.Window):
                 reply = self.rtspSocket.recv(4096)
                 if reply:
                     self.parseRtspReply(reply.decode("utf-8"))
+                    if self.requestSent == self.TEARDOWN:
+                        break
                 else:
                     print(
                         "No connection to server. RTSP listener thread is stopping..."
