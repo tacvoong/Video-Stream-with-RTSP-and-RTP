@@ -1,5 +1,5 @@
 import io
-import imageio
+import imageio, imageio_ffmpeg
 from PIL import Image
 class VideoStream:
         def __init__(self, filename):
