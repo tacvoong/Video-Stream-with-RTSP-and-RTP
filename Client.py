@@ -3,8 +3,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GdkPixbuf
 from RtpPacket import RtpPacket
 
-import socket, threading, sys, traceback, os
-import time
+import socket, threading, sys, traceback, os, time, datetime
 
 class Client(Gtk.Window):
     INIT = 0
@@ -64,27 +63,34 @@ class Client(Gtk.Window):
         # Create Play button
         self.start = Gtk.Button(label="Play")
         self.start.connect("clicked", self.playMovie)
-        self.grid.attach(self.start, 0, 2, 1, 1)
+        self.grid.attach(self.start, 0, 3, 1, 1)
 
         # Create Describe button
         self.describe = Gtk.Button(label="Describe")
         self.describe.connect("clicked", self.describeStream)
-        self.grid.attach(self.describe, 1, 2, 1, 1)
+        self.grid.attach(self.describe, 1, 3, 1, 1)
 
         # Create Pause button
         self.pause = Gtk.Button(label="Pause")
         self.pause.connect("clicked", self.pauseMovie)
-        self.grid.attach(self.pause, 2, 2, 1, 1)
+        self.grid.attach(self.pause, 2, 3, 1, 1)
 
         # Create Teardown button
         self.stop = Gtk.Button(label="Stop")
         self.stop.connect("clicked", self.teardownConnection)
-        self.grid.attach(self.stop, 3, 2, 1, 1)
+        self.grid.attach(self.stop, 3, 3, 1, 1)
 
         # Create a seekbar that has 255 fixed steps
         self.seekbar = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 255, 1)
+        self.seekbar.set_draw_value(False)
         self.seekbar.connect("change_value", self.seek)
-        self.grid.attach(self.seekbar, 0, 1, 4, 1)
+        self.grid.attach(self.seekbar, 0, 2, 4, 1)
+
+        # Create time labels. The left one indicates current time, the right indicates length
+        self.currentTime = Gtk.Label.new('00:00:00')
+        self.duration = Gtk.Label.new('00:00:00')
+        self.grid.attach(self.currentTime, 0, 1, 1, 1)
+        self.grid.attach(self.duration, 3, 1, 1, 1)
 
         # Create a label to display the movie
         # self.label = Label(self.master, height=19)
@@ -151,6 +157,7 @@ class Client(Gtk.Window):
                             self.tempFrameCount += 1
                             self.frameNbr = self.currFrameNbr
                             self.seekbar.set_value(255 * self.frameNbr / self.length)
+                            self.currentTime.set_label(str(datetime.timedelta(seconds = int(self.frameNbr * 0.05))))
                             self.updateMovie(rtpPacket.getPayload())
 
             except:
@@ -330,6 +337,8 @@ class Client(Gtk.Window):
                         self.openRtpPort()
                         # Update seekbar
                         self.length = int(lines[3].split(" ")[1])
+                        # Frames are sent at 50ms intervals
+                        self.duration.set_label(str(datetime.timedelta(seconds=int(self.length * 0.05))))
 
                     elif self.requestSent == self.PLAY:
                         self.state = self.PLAYING
