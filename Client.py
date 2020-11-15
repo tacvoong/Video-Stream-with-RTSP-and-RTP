@@ -24,6 +24,7 @@ class Client(Gtk.Window):
 
     # For seekable playback
     length = 1  # in frames
+    wasPlaying = False # to let seekbar know it should resume playing
 
     # For bitrate and framerate. Resets every time playback is paused
     startTime = time.time_ns()
@@ -83,7 +84,8 @@ class Client(Gtk.Window):
         # Create a seekbar that has 255 fixed steps
         self.seekbar = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 255, 1)
         self.seekbar.set_draw_value(False)
-        self.seekbar.connect("change_value", self.seek)
+        self.seekbar.connect("button-press-event", self.seekStart)
+        self.seekbar.connect("button-release-event", self.seekEnd)
         self.grid.attach(self.seekbar, 0, 2, 4, 1)
 
         # Create time labels. The left one indicates current time, the right indicates length
@@ -102,16 +104,26 @@ class Client(Gtk.Window):
         if self.state == self.INIT:
             self.sendRtspRequest(self.SETUP)
 
-    def teardownConnection(self, button=None):
+    def teardownConnection(self, *args):
         """Teardown button handler, now no longer quits the client"""
         self.sendRtspRequest(self.TEARDOWN)
 
-    def pauseMovie(self, button=None):
+    def pauseMovie(self, *args):
         """Pause button handler."""
         if self.state == self.PLAYING:
             self.sendRtspRequest(self.PAUSE)
 
-    def playMovie(self, button=None):
+    def seekStart(self, *args):
+        print("Begin dragging")
+        if self.state == self.PLAYING:
+            self.wasPlaying = True
+            self.pauseMovie()
+            while self.state != self.READY:
+                pass
+        else:
+            self.wasPlaying = False
+
+    def playMovie(self, *args):
         """Play button handler."""
         if self.state == self.INIT:
             self.setupMovie()
@@ -191,16 +203,12 @@ class Client(Gtk.Window):
             errorDialog.run()
             errorDialog.destroy()
 
-    def seek(self, context, scroll, value):
-        was_playing = False
-        if self.state == self.PLAYING:
-            was_playing = True
-            self.pauseMovie()
-            while self.state != self.READY:
-                pass
-        self.frameNbr = int(round(self.length * int(value) / 255))
-        if was_playing:
-            self.sendRtspRequest(self.PLAY)
+    def seekEnd(self, *args):
+        print("End dragging")
+        self.frameNbr = int(round(self.length * int(self.seekbar.get_value()) / 255))
+        if self.wasPlaying:
+            self.playMovie()
+            self.wasPlaying = False
 
     def sendRtspRequest(self, requestCode):
         """Send RTSP request to the server."""
